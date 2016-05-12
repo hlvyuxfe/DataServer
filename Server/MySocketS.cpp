@@ -18,22 +18,19 @@ MySocketS::~MySocketS()
 
 void MySocketS::OnAccept(int nErrorCode)
 {
-	/*if (m_dlg->m_ServerSocket == NULL)
-	{
 		m_dlg->OnAccept();
-	}*/
 	CAsyncSocket::OnAccept(nErrorCode);
 }
 
 void MySocketS::OnClose(int nErrorCode)
 {
-	m_dlg->OnClose();
+	m_dlg->OnClose(this->ClientNumber);
 	CAsyncSocket::OnClose(nErrorCode);
 }
 
 void MySocketS::OnReceive(int nErrorCode)
 {
-	m_dlg->OnReceive();
+	m_dlg->OnReceive(this->ClientNumber);
 	CAsyncSocket::OnReceive(nErrorCode);
 }
 

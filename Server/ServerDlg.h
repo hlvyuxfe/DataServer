@@ -7,9 +7,25 @@
 #include "MySocketS.h"
 #include <map>
 #include "afxwin.h"
+#include "zip_helper.h"
+#include "Mycryptopp.h"
 
 class MySocketS;
 using std::map;
+/*
+消息协议头
+*/
+typedef struct tagHeader
+{
+	char type;//消息类型
+	UINT length;//消息长度
+	char name[15];//消息名称
+}Header,*pHeader;
+
+#define RSAKEY  1
+#define AESKEY  2
+#define DATA    3
+#define COMMOND 4
 
 // CServerDlg 对话框
 class CServerDlg : public CDialogEx
@@ -18,7 +34,7 @@ class CServerDlg : public CDialogEx
 public:
 	CServerDlg(CWnd* pParent = NULL);	// 标准构造函数
 	MySocketS *m_ListenSocket;
-	map<int, MySocketS> m_ServerSocket;
+	map<UINT, MySocketS*> m_ServerSocketMap;
 
 
 // 对话框数据
@@ -48,8 +64,9 @@ public:
 	CString CommondString;
 	afx_msg void OnBnClickedStartListen();
 
-	void OnReceive();
-	void OnClose();
+	void OnReceive(UINT);
+	void OnClose(UINT);
 	void OnAccept();
 	void SocketReset();
+	afx_msg void OnBnClickedExit();
 };

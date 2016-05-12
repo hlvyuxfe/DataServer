@@ -11,8 +11,13 @@
 #define new DEBUG_NEW
 #endif
 
+/*
+Global 
+*/
 bool Connected = false;//连接状态，用于设置按钮状态
 
+MyRSAPublic public_key;
+MyAES aes;
 
 // 用于应用程序“关于”菜单项的 CAboutDlg 对话框
 
@@ -110,6 +115,7 @@ BOOL CClientDlg::OnInitDialog()
 
 	// TODO: 在此添加额外的初始化代码
 	m_ClientSocket = NULL;
+	aes.GenerateKey();
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -207,6 +213,8 @@ void CClientDlg::OnBnClickedConnect()
 		if (Connected == false)
 		{
 			MyWnd->SetWindowTextA("Connect");
+			DomainControl.EnableWindow();
+			PortControl.EnableWindow();
 		}
 	}
 }
@@ -214,10 +222,33 @@ void CClientDlg::OnBnClickedConnect()
 
 void CClientDlg::OnReceive()
 {
-	char szTemp[200];
-	int n = m_ClientSocket->Receive(szTemp, 200);
-	szTemp[n] = '\0';	
-	//
+	char HeaderBuff[sizeof(Header)];
+	ZeroMemory(HeaderBuff, sizeof(HeaderBuff));
+	m_ClientSocket->Receive(HeaderBuff, sizeof(Header));
+	m_ClientSocket->AsyncSelect(FD_CLOSE | FD_READ | FD_WRITE);
+	Header* header = (Header*)HeaderBuff;
+	char type = header->type;
+	UINT length = header->length;
+	if (type == RSAKEY)
+	{
+		char *Rsakeybuff = new char[length+1];
+		ZeroMemory(Rsakeybuff, length+1);
+		while (SOCKET_ERROR == (m_ClientSocket->Receive(Rsakeybuff, length)));
+		m_ClientSocket->AsyncSelect(FD_CLOSE | FD_READ | FD_WRITE);
+		string Modulus(Rsakeybuff);
+		public_key.SetPublic(Modulus,"17");
+		delete[]Rsakeybuff;
+		string cliperkey=public_key.encrypt(reinterpret_cast<char const*>(aes.key));
+		Header Aeshead;
+		Aeshead.type = AESKEY;
+		Aeshead.length = cliperkey.size();
+		m_ClientSocket->Send((char*)&Aeshead,sizeof(Header));
+		m_ClientSocket->Send(cliperkey.c_str(), cliperkey.size());
+	}
+	else if (type == COMMOND)
+	{
+
+	}
 }
 
 void CClientDlg::OnClose()
@@ -245,6 +276,8 @@ void CClientDlg::OnConnect(int nErrorCode)
 		if (Connected == true)
 		{
 			MyWnd->SetWindowTextA("Close");
+			DomainControl.EnableWindow(false);
+			PortControl.EnableWindow(false);
 			SetTimer(1, 1000, NULL);
 		}
 	}

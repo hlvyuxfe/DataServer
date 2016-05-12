@@ -10,6 +10,21 @@
 
 class MySocket;
 
+/*
+消息协议头
+*/
+typedef struct tagHeader
+{
+	char type;//消息类型
+	UINT length;//消息长度
+	char name[15];//消息名称
+}Header, *pHeader;
+
+#define RSAKEY  1
+#define AESKEY  2
+#define DATA    3
+#define COMMOND 4
+
 // CClientDlg 对话框
 class CClientDlg : public CDialogEx
 {

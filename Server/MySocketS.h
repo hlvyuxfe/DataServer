@@ -1,6 +1,8 @@
 #pragma once
+#include "Server.h"
 #include "Afxsock.h"
 #include "ServerDlg.h"
+#include "Mycryptopp.h"
 
 // MySocketS ÃüÁîÄ¿±ê
 
@@ -17,6 +19,8 @@ public:
 
 	CServerDlg *m_dlg;
 	void GetDlg(CServerDlg *dlg);
+	UINT ClientNumber;
+	MyAES aes;
 };
 
 

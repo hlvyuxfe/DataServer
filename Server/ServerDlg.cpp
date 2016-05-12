@@ -6,21 +6,27 @@
 #include "Server.h"
 #include "ServerDlg.h"
 #include "afxdialogex.h"
+#include <string>
+#include <cstring>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
-#define ReadSize 1024*4
-struct FILEINFO
-{
-	ULONGLONG fileLength;//文件长度
+//变量定义开始
+using std::string;
+using CryptoPP::AES;
 
-	CString fileName;//文件名
-};
-FILEINFO MyFileInfo;//文件结构
+#define ReadSize 1024*4//文件一次读取长度
 
-bool Listening=false;
+bool Listening=false;//监听状态
+
+UINT ClientNumber=0;//客户端序号
+
+MyRSA rsa(1024);//RSA初始化
+byte iv[AES::BLOCKSIZE] = "Transmission";
+
+//变量定义结束
 
 // 用于应用程序“关于”菜单项的 CAboutDlg 对话框
 
@@ -81,6 +87,7 @@ BEGIN_MESSAGE_MAP(CServerDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
 	ON_BN_CLICKED(IDC_BUTTON1, &CServerDlg::OnBnClickedStartListen)
+	ON_BN_CLICKED(IDCANCEL, &CServerDlg::OnBnClickedExit)
 END_MESSAGE_MAP()
 
 
@@ -116,6 +123,7 @@ BOOL CServerDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// 设置小图标
 
 	// TODO: 在此添加额外的初始化代码
+	m_ListenSocket = NULL;
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -190,6 +198,7 @@ void CServerDlg::OnBnClickedStartListen()
 		m_ListenSocket->Create(Port, SOCK_STREAM, FD_ACCEPT, sIP);
 		m_ListenSocket->Listen(5);
 		MyWnd->SetWindowTextA("Stop");
+		PortControl.EnableWindow(false);
 	}
 	else
 	{
@@ -200,21 +209,95 @@ void CServerDlg::OnBnClickedStartListen()
 			m_ListenSocket = NULL;
 		}
 		MyWnd->SetWindowTextA("Start");
+		PortControl.EnableWindow();
 	}
 }
 
-void CServerDlg::OnReceive()
+void CServerDlg::OnReceive(UINT ClientNumber)
 {
+	if (m_ServerSocketMap[ClientNumber] != NULL)
+	{
+		char HeaderBuff[sizeof(Header)];
+		ZeroMemory(HeaderBuff, sizeof(HeaderBuff));
+		m_ServerSocketMap[ClientNumber]->Receive(HeaderBuff, sizeof(Header));
+		m_ServerSocketMap[ClientNumber]->AsyncSelect(FD_CLOSE | FD_READ | FD_WRITE);
+		Header* header = (Header*)HeaderBuff;
+		char type = header->type;
+		UINT length = header->length;
+		if (type == AESKEY)
+		{
+			char *aeskeybuff = new char[length];
+			ZeroMemory(aeskeybuff, length);
+			int n=m_ServerSocketMap[ClientNumber]->Receive(aeskeybuff, length);
+			m_ServerSocketMap[ClientNumber]->AsyncSelect(FD_CLOSE | FD_READ | FD_WRITE);
+			string chiper;
+			for (size_t i = 0; i < length; i++)
+			{
+				chiper.append(1, aeskeybuff[i]);
+			}
+			string aeskey= rsa.decrypt(chiper);
+			m_ServerSocketMap[ClientNumber]->aes.SetKey((byte*)aeskey.c_str(), iv, 16);
+			delete[]aeskeybuff;
+		}
+		else if (type ==DATA )
+		{
+
+		}
+	}
 }
 
-void CServerDlg::OnClose()
+void CServerDlg::OnClose(UINT ClientNumber)
 {
+	if (m_ServerSocketMap[ClientNumber] != NULL)
+	{
+		delete m_ServerSocketMap[ClientNumber];
+		m_ServerSocketMap.erase(ClientNumber);
+		//MessageBox("client close the connect", "Receive");
+		//m_ServerSocket = NULL;
+	}
 }
 
 void CServerDlg::OnAccept()
 {
+	MySocketS *m_ServerSocket = new MySocketS;
+	m_ServerSocket->GetDlg(this);
+	m_ListenSocket->Accept(*m_ServerSocket);
+	m_ServerSocket->AsyncSelect(FD_CLOSE | FD_READ | FD_WRITE);
+	m_ServerSocket->ClientNumber= ClientNumber++;
+	m_ServerSocketMap.insert({ m_ServerSocket->ClientNumber ,m_ServerSocket });
+
+	string Modulus = rsa.getModulus();
+	UINT ModulusLength= Modulus.size();
+	Header head;
+	head.type = RSAKEY;
+	head.length = ModulusLength;
+	m_ServerSocket->Send((char*)&head, sizeof(Header));
+	m_ServerSocket->Send(Modulus.c_str(), ModulusLength);
+
+	//CString message;
+	//message.Format("accept an connect %d", m_ServerSocket->ClientNumber);
+	//MessageBox(message, "Receive");
 }
 
 void CServerDlg::SocketReset()
 {
+	auto map_it = m_ServerSocketMap.cbegin();
+	while (map_it != m_ServerSocketMap.cend())
+	{
+		delete map_it->second;
+		m_ServerSocketMap.erase(map_it->first);
+	}
+}
+
+
+void CServerDlg::OnBnClickedExit()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	SocketReset();
+	if (m_ListenSocket != NULL)
+	{
+		delete m_ListenSocket;
+		m_ListenSocket = NULL;
+	}
+	CDialogEx::OnCancel();
 }
