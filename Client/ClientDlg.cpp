@@ -6,18 +6,34 @@
 #include "Client.h"
 #include "ClientDlg.h"
 #include "afxdialogex.h"
+#include <random>
+#include <cstdlib>
+#include <fstream>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
+using std::ofstream;
 /*
 Global 
 */
+
+#define ReadSize 1024*4//文件一次读取长度
+
 bool Connected = false;//连接状态，用于设置按钮状态
 
 MyRSAPublic public_key;
 MyAES aes;
+
+unsigned short bitswitch;
+float datagather[8];
+
+std::default_random_engine generator(time(NULL));
+std::uniform_int_distribution<size_t> axis_dist(0,65535);
+std::uniform_real_distribution<double> distribution(0.0, 1.0);
+
+//end of global
 
 // 用于应用程序“关于”菜单项的 CAboutDlg 对话框
 
@@ -244,10 +260,36 @@ void CClientDlg::OnReceive()
 		Aeshead.length = cliperkey.size();
 		m_ClientSocket->Send((char*)&Aeshead,sizeof(Header));
 		m_ClientSocket->Send(cliperkey.c_str(), cliperkey.size());
+
 	}
 	else if (type == COMMOND)
 	{
+		byte commond=0;
+		m_ClientSocket->Receive(&commond, length);
+		if (commond & 0x80)
+		{//
+			if (commond & 0x40)
+			{
+				Connected = true;
+				CWnd* MyWnd = GetDlgItem(IDC_BUTTON1);
+				if (Connected == true)
+				{
+					MyWnd->SetWindowTextA("Close");
+					DomainControl.EnableWindow(false);
+					PortControl.EnableWindow(false);
+					OnTimer(1);
+					//SetTimer(1, 1000, NULL);
+				}
+			}
+			else
+			{
+				OnClose();
+			}
+		}
+		else
+		{
 
+		}
 	}
 }
 
@@ -259,8 +301,10 @@ void CClientDlg::OnClose()
 	if (Connected == false)
 	{
 		MyWnd->SetWindowTextA("Connect");
+		KillTimer(1);
 	}
 }
+
 
 void CClientDlg::OnConnect(int nErrorCode)
 {
@@ -268,18 +312,6 @@ void CClientDlg::OnConnect(int nErrorCode)
 	{
 		AfxMessageBox("connect error!");
 		return;
-	}
-	else
-	{
-		Connected = true;
-		CWnd* MyWnd = GetDlgItem(IDC_BUTTON1);
-		if (Connected == true)
-		{
-			MyWnd->SetWindowTextA("Close");
-			DomainControl.EnableWindow(false);
-			PortControl.EnableWindow(false);
-			SetTimer(1, 1000, NULL);
-		}
 	}
 }
 
@@ -306,6 +338,67 @@ void CClientDlg::OnTimer(UINT_PTR nIDEvent)
 	CDialogEx::OnTimer(nIDEvent);
 	CTime curtime;
 	curtime = CTime::GetCurrentTime();
-	//m_sWords = curtime.Format(_T("%Y%m%d%H%M%S"));
-	UpdateData(false);
+	bitswitch = axis_dist(generator);
+	for (auto &i : datagather)
+	{
+		i = distribution(generator);
+	}
+	CString FileName = curtime.Format(_T("%Y%m%d%H%M%S.dat"));
+	ofstream file(curtime.Format(_T("%Y%m%d%H%M%S.dat")));
+	//CArchive ar(&file, CArchive::store);
+	file << bitswitch;
+	for (auto i : datagather)
+	{
+		file << i;
+	}
+	//ar.Flush();
+	file.close();
+	ZipHelper z;
+	z.AddFile(FileName.GetBuffer());
+	z.ToZip(FileName + ".zip");
+	//DeleteFile(FileName);//源文件
+	FileName += ".zip";
+	string Afteraes = FileName.GetBuffer();
+	Afteraes += ".aes";
+	aes.EncryptFile(FileName.GetBuffer(), Afteraes);
+	DeleteFile(FileName);//压缩后
+	SendFile(Afteraes);
+	DeleteFile(Afteraes.c_str());//加密后
+}
+
+//char bitstring[17];
+//_itoa_s(bitswitch, bitstring, 17, 2);
+//CWnd* MyWnd = GetDlgItem(IDC_STATIC_BITSWITCH);
+//MyWnd->SetWindowText(bitstring);
+
+bool CClientDlg::SendFile(string FilePath)
+{
+	CFile file;
+	if (!file.Open(FilePath.c_str(), CFile::modeRead | CFile::typeBinary))
+	{
+		AfxMessageBox(_T("文件不存在"));
+		return false;
+	}
+	Header FileHeader;
+	FileHeader.type = DATA;
+	FileHeader.length =file.GetLength();
+	memcpy(FileHeader.name, FilePath.c_str(), 27);
+	m_ClientSocket->Send((char*)&FileHeader, sizeof(Header));
+	LPBYTE data = new BYTE[ReadSize]; // 用于存放读入的文件数据块
+	UINT ByteSended = 0, count;
+	while (ByteSended < FileHeader.length)
+	{
+		count=file.Read(data, ReadSize);
+		while (SOCKET_ERROR == m_ClientSocket->Send(data, count))
+		{
+		}
+		ByteSended += count;
+	}
+	if (data)
+	{
+		delete[] data;
+		data = NULL;
+	}
+	file.Close();
+	return true;
 }

@@ -238,10 +238,24 @@ void CServerDlg::OnReceive(UINT ClientNumber)
 			string aeskey= rsa.decrypt(chiper);
 			m_ServerSocketMap[ClientNumber]->aes.SetKey((byte*)aeskey.c_str(), iv, 16);
 			delete[]aeskeybuff;
+			byte commond=START;
+			Header ComHeader;
+			ComHeader.type = COMMOND;
+			ComHeader.length = sizeof(byte);
+			m_ServerSocketMap[ClientNumber]->Send((char*)&ComHeader, sizeof(Header));
+			m_ServerSocketMap[ClientNumber]->Send(&commond, sizeof(byte));
 		}
 		else if (type ==DATA )
 		{
-
+			ReceiveFile(ClientNumber,*header);
+			string FileName;
+			FileName.assign(header->name, 0, 22);
+			m_ServerSocketMap[ClientNumber]->aes.DecryptFile(header->name, FileName);
+			DeleteFile(header->name);//解密后
+			UnZipHelper z;
+			z.OpenZip(FileName.c_str());
+			FileName=z.UnZip();
+			DeleteFile((FileName+".zip").c_str());
 		}
 	}
 }
@@ -300,4 +314,31 @@ void CServerDlg::OnBnClickedExit()
 		m_ListenSocket = NULL;
 	}
 	CDialogEx::OnCancel();
+}
+
+bool CServerDlg::ReceiveFile(UINT ClientNumber,Header FileHeader)
+{
+	CFile file;
+	if (file.Open(FileHeader.name, CFile::modeCreate | CFile::modeWrite))
+	{
+		LPBYTE data = new BYTE[ReadSize];
+		ULONGLONG ByteReceived = 0;
+		int count = 0;
+		while (ByteReceived < FileHeader.length)
+		{
+			count = m_ServerSocketMap[ClientNumber]->Receive(data, ReadSize);
+			if (count == SOCKET_ERROR)
+				continue;
+			file.Write(data, count);//写入文件
+			file.Flush();
+			ByteReceived += count;
+		}
+		if (data)
+		{
+			delete[]  data;
+			data = NULL;
+		}
+		file.Close();
+	}
+	return true;
 }

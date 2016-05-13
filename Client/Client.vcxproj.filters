@@ -36,6 +36,9 @@
     <ClInclude Include="MySocket.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Mycryptopp.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Client.cpp">
@@ -48,6 +51,12 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="MySocket.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="zip_helper.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Mycryptopp.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

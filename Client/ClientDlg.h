@@ -17,13 +17,16 @@ typedef struct tagHeader
 {
 	char type;//消息类型
 	UINT length;//消息长度
-	char name[15];//消息名称
+	char name[27] = { 0 };//文件名称
 }Header, *pHeader;
 
 #define RSAKEY  1
 #define AESKEY  2
 #define DATA    3
 #define COMMOND 4
+
+#define START 0xc0
+#define STOP  0x80
 
 // CClientDlg 对话框
 class CClientDlg : public CDialogEx
@@ -64,4 +67,5 @@ public:
 	afx_msg void OnBnClickedConnect();
 	afx_msg void OnBnClickedExit();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	bool SendFile(string FilePath);
 };
