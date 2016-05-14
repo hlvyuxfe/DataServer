@@ -8,6 +8,9 @@
 #include "afxdialogex.h"
 #include <string>
 #include <cstring>
+#include <istream>
+#include <ios>
+#include <bitset>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -16,6 +19,8 @@
 //变量定义开始
 using std::string;
 using CryptoPP::AES;
+using std::ifstream;
+using std::bitset;
 
 #define ReadSize 1024*4//文件一次读取长度
 
@@ -80,6 +85,16 @@ void CServerDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Text(pDX, IDC_EDIT1, Port);
 	DDX_Control(pDX, IDC_EDIT2, CommondControl);
 	DDX_Text(pDX, IDC_EDIT2, CommondString);
+	DDX_Text(pDX, IDC_DATA0, datagather[0]);
+	DDX_Text(pDX, IDC_DATA1, datagather[1]);
+	DDX_Text(pDX, IDC_DATA2, datagather[2]);
+	DDX_Text(pDX, IDC_DATA3, datagather[3]);
+	DDX_Text(pDX, IDC_DATA4, datagather[4]);
+	DDX_Text(pDX, IDC_DATA5, datagather[5]);
+	DDX_Text(pDX, IDC_DATA6, datagather[6]);
+	DDX_Text(pDX, IDC_DATA7, datagather[7]);
+	DDX_Text(pDX, IDC_DATA8, datagather[8]);
+	DDX_Control(pDX, IDC_BUTTON2, SendControl);
 }
 
 BEGIN_MESSAGE_MAP(CServerDlg, CDialogEx)
@@ -88,6 +103,7 @@ BEGIN_MESSAGE_MAP(CServerDlg, CDialogEx)
 	ON_WM_QUERYDRAGICON()
 	ON_BN_CLICKED(IDC_BUTTON1, &CServerDlg::OnBnClickedStartListen)
 	ON_BN_CLICKED(IDCANCEL, &CServerDlg::OnBnClickedExit)
+	ON_BN_CLICKED(IDC_BUTTON2, &CServerDlg::OnBnClickedSendCommond)
 END_MESSAGE_MAP()
 
 
@@ -199,6 +215,8 @@ void CServerDlg::OnBnClickedStartListen()
 		m_ListenSocket->Listen(5);
 		MyWnd->SetWindowTextA("Stop");
 		PortControl.EnableWindow(false);
+		CommondControl.EnableWindow(true);
+		SendControl.EnableWindow(true);
 	}
 	else
 	{
@@ -210,6 +228,8 @@ void CServerDlg::OnBnClickedStartListen()
 		}
 		MyWnd->SetWindowTextA("Start");
 		PortControl.EnableWindow();
+		CommondControl.EnableWindow(false);
+		SendControl.EnableWindow(false);
 	}
 }
 
@@ -256,6 +276,35 @@ void CServerDlg::OnReceive(UINT ClientNumber)
 			z.OpenZip(FileName.c_str());
 			FileName=z.UnZip();
 			DeleteFile((FileName+".zip").c_str());
+			if (m_ServerSocketMap.begin()->first == ClientNumber)
+			{
+				UpdateData();
+				unsigned short bitswitch;
+				ifstream file(FileName,std::ios::binary);
+				for (auto &i : datagather)
+				{
+					file >> i;
+				}
+				char temp;
+				file >> temp;
+				file >> bitswitch;
+				file.close();
+				DeleteFile(FileName.c_str());
+				UpdateData(false);
+				bitset<16> bit(bitswitch);
+				CWnd* MyWnd = GetDlgItem(IDC_STATIC_BITSWITCH);
+				MyWnd->SetWindowText(bit.to_string().c_str());
+			}
+		}
+		else if (type = CONNECT)
+		{
+			string Modulus = rsa.getModulus();
+			UINT ModulusLength = Modulus.size();
+			Header head;
+			head.type = RSAKEY;
+			head.length = ModulusLength;
+			m_ServerSocketMap[ClientNumber]->Send((char*)&head, sizeof(Header));
+			m_ServerSocketMap[ClientNumber]->Send(Modulus.c_str(), ModulusLength);
 		}
 	}
 }
@@ -279,14 +328,6 @@ void CServerDlg::OnAccept()
 	m_ServerSocket->AsyncSelect(FD_CLOSE | FD_READ | FD_WRITE);
 	m_ServerSocket->ClientNumber= ClientNumber++;
 	m_ServerSocketMap.insert({ m_ServerSocket->ClientNumber ,m_ServerSocket });
-
-	string Modulus = rsa.getModulus();
-	UINT ModulusLength= Modulus.size();
-	Header head;
-	head.type = RSAKEY;
-	head.length = ModulusLength;
-	m_ServerSocket->Send((char*)&head, sizeof(Header));
-	m_ServerSocket->Send(Modulus.c_str(), ModulusLength);
 
 	//CString message;
 	//message.Format("accept an connect %d", m_ServerSocket->ClientNumber);
@@ -341,4 +382,19 @@ bool CServerDlg::ReceiveFile(UINT ClientNumber,Header FileHeader)
 		file.Close();
 	}
 	return true;
+}
+
+void CServerDlg::OnBnClickedSendCommond()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	UpdateData();
+	byte commond = strtol(CommondString.GetBuffer(),NULL,2);
+	Header ComHeader;
+	ComHeader.type = COMMOND;
+	ComHeader.length = sizeof(byte);
+	for (auto i : m_ServerSocketMap)
+	{
+		i.second->Send((char*)&ComHeader, sizeof(Header));
+		i.second->Send(&commond, sizeof(byte));
+	}
 }

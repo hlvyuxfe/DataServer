@@ -24,6 +24,7 @@ typedef struct tagHeader
 #define AESKEY  2
 #define DATA    3
 #define COMMOND 4
+#define CONNECT 5
 
 #define START 0xc0
 #define STOP  0x80
@@ -64,6 +65,7 @@ public:
 	CEdit PortControl;
 	CString DomainString;
 	int Port;
+	float datagather[9] = { 0 };
 	afx_msg void OnBnClickedConnect();
 	afx_msg void OnBnClickedExit();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);

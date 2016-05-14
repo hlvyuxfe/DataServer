@@ -26,6 +26,7 @@ typedef struct tagHeader
 #define AESKEY  2
 #define DATA    3
 #define COMMOND 4
+#define CONNECT 5
 
 #define START 0xc0
 #define STOP  0x80
@@ -73,4 +74,7 @@ public:
 	void SocketReset();
 	afx_msg void OnBnClickedExit();
 	bool ReceiveFile(UINT,Header FileHeader);
+	afx_msg void OnBnClickedSendCommond();
+	float datagather[9] = { 0 };
+	CButton SendControl;
 };

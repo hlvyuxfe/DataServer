@@ -9,12 +9,15 @@
 #include <random>
 #include <cstdlib>
 #include <fstream>
+#include <ios>
+#include <bitset>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
 using std::ofstream;
+using std::bitset;
 /*
 Global 
 */
@@ -23,11 +26,12 @@ Global
 
 bool Connected = false;//连接状态，用于设置按钮状态
 
+bool sending = false;//发送状态，标记是否在发送中
+
 MyRSAPublic public_key;
 MyAES aes;
 
 unsigned short bitswitch;
-float datagather[8];
 
 std::default_random_engine generator(time(NULL));
 std::uniform_int_distribution<size_t> axis_dist(0,65535);
@@ -73,8 +77,8 @@ END_MESSAGE_MAP()
 
 CClientDlg::CClientDlg(CWnd* pParent /*=NULL*/)
 	: CDialogEx(IDD_CLIENT_DIALOG, pParent)
-	, DomainString(_T("localhost"))
-	, Port(52535)
+	, DomainString(_T("1k49g77592.iask.in"))
+	, Port(31903)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
@@ -86,6 +90,16 @@ void CClientDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_EDIT2, PortControl);
 	DDX_Text(pDX, IDC_EDIT1, DomainString);
 	DDX_Text(pDX, IDC_EDIT2, Port);
+	DDX_Text(pDX, IDC_DATA0, datagather[0]);
+	DDX_Text(pDX, IDC_DATA1, datagather[1]);
+	DDX_Text(pDX, IDC_DATA2, datagather[2]);
+	DDX_Text(pDX, IDC_DATA3, datagather[3]);
+	DDX_Text(pDX, IDC_DATA4, datagather[4]);
+	DDX_Text(pDX, IDC_DATA5, datagather[5]);
+	DDX_Text(pDX, IDC_DATA6, datagather[6]);
+	DDX_Text(pDX, IDC_DATA7, datagather[7]);
+	DDX_Text(pDX, IDC_DATA8, datagather[8]);
+
 }
 
 BEGIN_MESSAGE_MAP(CClientDlg, CDialogEx)
@@ -212,8 +226,6 @@ void CClientDlg::OnBnClickedConnect()
 			char addr_in_p[INET_ADDRSTRLEN];
 			inet_ntop(AF_INET, &sockaddr_ipv4->sin_addr, addr_in_p, INET_ADDRSTRLEN);
 			m_ClientSocket->Connect(addr_in_p, Port);
-			//m_ListWords.AddString(addr_in_p);
-			//m_ListWords.SetTopIndex(m_ListWords.GetCount() - 1);
 		}
 		else
 		{
@@ -223,15 +235,7 @@ void CClientDlg::OnBnClickedConnect()
 	}
 	else
 	{
-		SocketReset();
-		Connected = false;
-		CWnd* MyWnd = GetDlgItem(IDC_BUTTON1);
-		if (Connected == false)
-		{
-			MyWnd->SetWindowTextA("Connect");
-			DomainControl.EnableWindow();
-			PortControl.EnableWindow();
-		}
+		OnClose();
 	}
 }
 
@@ -267,9 +271,9 @@ void CClientDlg::OnReceive()
 		byte commond=0;
 		m_ClientSocket->Receive(&commond, length);
 		if (commond & 0x80)
-		{//
+		{//1*******命令
 			if (commond & 0x40)
-			{
+			{//11******开启
 				Connected = true;
 				CWnd* MyWnd = GetDlgItem(IDC_BUTTON1);
 				if (Connected == true)
@@ -277,17 +281,24 @@ void CClientDlg::OnReceive()
 					MyWnd->SetWindowTextA("Close");
 					DomainControl.EnableWindow(false);
 					PortControl.EnableWindow(false);
-					OnTimer(1);
-					//SetTimer(1, 1000, NULL);
+					//OnTimer(1);
+					SetTimer(1, 1000, NULL);
 				}
 			}
 			else
-			{
-				OnClose();
+			{//10******
+				if (commond & 0x20)
+				{//101*****停止
+					KillTimer(1);
+				}
+				else
+				{//100*****断开
+					OnClose();
+				}
 			}
 		}
 		else
-		{
+		{//0******控制字
 
 		}
 	}
@@ -295,6 +306,7 @@ void CClientDlg::OnReceive()
 
 void CClientDlg::OnClose()
 {
+	while (sending);
 	SocketReset();
 	Connected = false;
 	CWnd* MyWnd = GetDlgItem(IDC_BUTTON1);
@@ -313,6 +325,9 @@ void CClientDlg::OnConnect(int nErrorCode)
 		AfxMessageBox("connect error!");
 		return;
 	}
+	Header ConnectHeader;
+	ConnectHeader.type = CONNECT;
+	m_ClientSocket->Send((char*)&ConnectHeader, sizeof(Header));
 }
 
 void CClientDlg::SocketReset()
@@ -327,14 +342,15 @@ void CClientDlg::SocketReset()
 void CClientDlg::OnBnClickedExit()
 {
 	// TODO: 在此添加控件通知处理程序代码
+	while (sending);
 	SocketReset();
 	CDialogEx::OnCancel();
 }
 
-
 void CClientDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO: 在此添加消息处理程序代码和/或调用默认值
+	sending = true;
 	CDialogEx::OnTimer(nIDEvent);
 	CTime curtime;
 	curtime = CTime::GetCurrentTime();
@@ -343,20 +359,23 @@ void CClientDlg::OnTimer(UINT_PTR nIDEvent)
 	{
 		i = distribution(generator);
 	}
+	bitset<16> bit(bitswitch);
+	CWnd* MyWnd = GetDlgItem(IDC_STATIC_BITSWITCH);
+	MyWnd->SetWindowText(bit.to_string().c_str());
+	UpdateData(false);
 	CString FileName = curtime.Format(_T("%Y%m%d%H%M%S.dat"));
-	ofstream file(curtime.Format(_T("%Y%m%d%H%M%S.dat")));
-	//CArchive ar(&file, CArchive::store);
-	file << bitswitch;
+	ofstream file(curtime.Format(_T("%Y%m%d%H%M%S.dat")),std::ios::binary);
 	for (auto i : datagather)
 	{
 		file << i;
 	}
-	//ar.Flush();
+	file << '|';
+	file << bitswitch;
 	file.close();
 	ZipHelper z;
 	z.AddFile(FileName.GetBuffer());
 	z.ToZip(FileName + ".zip");
-	//DeleteFile(FileName);//源文件
+	DeleteFile(FileName);//源文件
 	FileName += ".zip";
 	string Afteraes = FileName.GetBuffer();
 	Afteraes += ".aes";
@@ -364,12 +383,10 @@ void CClientDlg::OnTimer(UINT_PTR nIDEvent)
 	DeleteFile(FileName);//压缩后
 	SendFile(Afteraes);
 	DeleteFile(Afteraes.c_str());//加密后
+	sending = false;
+
 }
 
-//char bitstring[17];
-//_itoa_s(bitswitch, bitstring, 17, 2);
-//CWnd* MyWnd = GetDlgItem(IDC_STATIC_BITSWITCH);
-//MyWnd->SetWindowText(bitstring);
 
 bool CClientDlg::SendFile(string FilePath)
 {
