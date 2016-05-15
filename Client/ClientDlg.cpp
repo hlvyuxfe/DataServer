@@ -244,7 +244,7 @@ void CClientDlg::OnReceive()
 {
 	char HeaderBuff[sizeof(Header)];
 	ZeroMemory(HeaderBuff, sizeof(HeaderBuff));
-	m_ClientSocket->Receive(HeaderBuff, sizeof(Header));
+	while (SOCKET_ERROR == m_ClientSocket->Receive(HeaderBuff, sizeof(Header)));
 	m_ClientSocket->AsyncSelect(FD_CLOSE | FD_READ | FD_WRITE);
 	Header* header = (Header*)HeaderBuff;
 	char type = header->type;
@@ -263,13 +263,14 @@ void CClientDlg::OnReceive()
 		Aeshead.type = AESKEY;
 		Aeshead.length = cliperkey.size();
 		m_ClientSocket->Send((char*)&Aeshead,sizeof(Header));
-		m_ClientSocket->Send(cliperkey.c_str(), cliperkey.size());
+		m_ClientSocket->Send(cliperkey.c_str(), cliperkey.size());//∑¢ÀÕAES√‹¬Î
 
 	}
 	else if (type == COMMOND)
 	{
 		byte commond=0;
-		m_ClientSocket->Receive(&commond, length);
+		while (SOCKET_ERROR == m_ClientSocket->Receive(&commond, length));
+		m_ClientSocket->AsyncSelect(FD_CLOSE | FD_READ | FD_WRITE);
 		if (commond & 0x80)
 		{//1*******√¸¡Ó
 			if (commond & 0x40)

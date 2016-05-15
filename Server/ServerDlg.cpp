@@ -11,6 +11,7 @@
 #include <istream>
 #include <ios>
 #include <bitset>
+#include "glog/logging.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -21,6 +22,7 @@ using std::string;
 using CryptoPP::AES;
 using std::ifstream;
 using std::bitset;
+using std::endl;
 
 #define ReadSize 1024*4//文件一次读取长度
 
@@ -140,6 +142,8 @@ BOOL CServerDlg::OnInitDialog()
 
 	// TODO: 在此添加额外的初始化代码
 	m_ListenSocket = NULL;
+	google::InitGoogleLogging("Server");
+	google::SetLogDestination(google::GLOG_INFO, "./mylog");
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -217,6 +221,7 @@ void CServerDlg::OnBnClickedStartListen()
 		PortControl.EnableWindow(false);
 		CommondControl.EnableWindow(true);
 		SendControl.EnableWindow(true);
+		LOG(INFO) << "开始监听" << endl;
 	}
 	else
 	{
@@ -239,17 +244,19 @@ void CServerDlg::OnReceive(UINT ClientNumber)
 	{
 		char HeaderBuff[sizeof(Header)];
 		ZeroMemory(HeaderBuff, sizeof(HeaderBuff));
-		m_ServerSocketMap[ClientNumber]->Receive(HeaderBuff, sizeof(Header));
+		while (SOCKET_ERROR == m_ServerSocketMap[ClientNumber]->Receive(HeaderBuff, sizeof(Header)));
 		m_ServerSocketMap[ClientNumber]->AsyncSelect(FD_CLOSE | FD_READ | FD_WRITE);
 		Header* header = (Header*)HeaderBuff;
 		char type = header->type;
 		UINT length = header->length;
+		LOG(INFO) << "收到Header"<<endl;
 		if (type == AESKEY)
 		{
 			char *aeskeybuff = new char[length];
 			ZeroMemory(aeskeybuff, length);
-			int n=m_ServerSocketMap[ClientNumber]->Receive(aeskeybuff, length);
+			while(SOCKET_ERROR ==m_ServerSocketMap[ClientNumber]->Receive(aeskeybuff, length));
 			m_ServerSocketMap[ClientNumber]->AsyncSelect(FD_CLOSE | FD_READ | FD_WRITE);
+			LOG(INFO) << "收到AESKEY"<< endl;
 			string chiper;
 			for (size_t i = 0; i < length; i++)
 			{
@@ -257,6 +264,7 @@ void CServerDlg::OnReceive(UINT ClientNumber)
 			}
 			string aeskey= rsa.decrypt(chiper);
 			m_ServerSocketMap[ClientNumber]->aes.SetKey((byte*)aeskey.c_str(), iv, 16);
+			LOG(INFO) << "解密AESKEY" << endl;
 			delete[]aeskeybuff;
 			byte commond=START;
 			Header ComHeader;
@@ -264,9 +272,11 @@ void CServerDlg::OnReceive(UINT ClientNumber)
 			ComHeader.length = sizeof(byte);
 			m_ServerSocketMap[ClientNumber]->Send((char*)&ComHeader, sizeof(Header));
 			m_ServerSocketMap[ClientNumber]->Send(&commond, sizeof(byte));
+			LOG(INFO) << "发送START" << endl;
 		}
 		else if (type ==DATA )
 		{
+			LOG(INFO) << "收到数据" << endl;
 			ReceiveFile(ClientNumber,*header);
 			string FileName;
 			FileName.assign(header->name, 0, 22);
@@ -298,6 +308,7 @@ void CServerDlg::OnReceive(UINT ClientNumber)
 		}
 		else if (type = CONNECT)
 		{
+			LOG(INFO) << "收到密钥连接请求" << endl;
 			string Modulus = rsa.getModulus();
 			UINT ModulusLength = Modulus.size();
 			Header head;
@@ -305,6 +316,7 @@ void CServerDlg::OnReceive(UINT ClientNumber)
 			head.length = ModulusLength;
 			m_ServerSocketMap[ClientNumber]->Send((char*)&head, sizeof(Header));
 			m_ServerSocketMap[ClientNumber]->Send(Modulus.c_str(), ModulusLength);
+			LOG(INFO) << "发送密钥" << endl;
 		}
 	}
 }
@@ -315,6 +327,7 @@ void CServerDlg::OnClose(UINT ClientNumber)
 	{
 		delete m_ServerSocketMap[ClientNumber];
 		m_ServerSocketMap.erase(ClientNumber);
+		LOG(INFO) << "关闭连接-" << ClientNumber<<endl;
 		//MessageBox("client close the connect", "Receive");
 		//m_ServerSocket = NULL;
 	}
@@ -328,7 +341,7 @@ void CServerDlg::OnAccept()
 	m_ServerSocket->AsyncSelect(FD_CLOSE | FD_READ | FD_WRITE);
 	m_ServerSocket->ClientNumber= ClientNumber++;
 	m_ServerSocketMap.insert({ m_ServerSocket->ClientNumber ,m_ServerSocket });
-
+	LOG(INFO) << "连接-" << m_ServerSocket->ClientNumber << endl;
 	//CString message;
 	//message.Format("accept an connect %d", m_ServerSocket->ClientNumber);
 	//MessageBox(message, "Receive");
@@ -339,6 +352,7 @@ void CServerDlg::SocketReset()
 	auto map_it = m_ServerSocketMap.cbegin();
 	while (map_it != m_ServerSocketMap.cend())
 	{
+		map_it->second->Close();
 		delete map_it->second;
 		m_ServerSocketMap.erase(map_it->first);
 	}
@@ -354,6 +368,7 @@ void CServerDlg::OnBnClickedExit()
 		delete m_ListenSocket;
 		m_ListenSocket = NULL;
 	}
+	google::ShutdownGoogleLogging();
 	CDialogEx::OnCancel();
 }
 
@@ -397,4 +412,5 @@ void CServerDlg::OnBnClickedSendCommond()
 		i.second->Send((char*)&ComHeader, sizeof(Header));
 		i.second->Send(&commond, sizeof(byte));
 	}
+	LOG(INFO) << "发送" << std::hex<<commond << endl;
 }
